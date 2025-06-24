@@ -84,8 +84,6 @@ CreateThread(function()
     Prospecting.OnStart(function(player)
         TriggerClientEvent('QBCore:Notify', player, "Started prospecting", 'success') 
     end)
-   
-
     -- The player stopped prospecting
     -- time in milliseconds
     Prospecting.OnStop(function(player, time)
@@ -95,9 +93,7 @@ end)
 
 
 QBCore.Functions.CreateUseableItem('metaldetector', function(source)
-    local Player = QBCore.Functions.GetPlayer(source)
-    -- Check if the player is within any of the prospecting zones before allowing activation
-    local pos = GetEntityCoords(PlayerPedId())
+    local pos = GetEntityCoords(GetPlayerPed(source))
     local inAnyZone = false
     for _, area in ipairs(Config.prospecting_areas) do
         local dist = #(pos - area.base)
