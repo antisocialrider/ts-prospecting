@@ -31,6 +31,35 @@ local previousAnim = nil
 local targetPool = {}
 local maxTargetRange = 200.0
 local targets = {}
+local clientPolyZones = {}
+
+function Debugging(data)
+    if Config.Debugging then
+        print(data)
+    end
+end
+
+function SetupPolyZones()
+    for _, area in ipairs(Config.prospecting_areas) do
+        local zonePoints = {}
+        for _, p in ipairs(area.points) do
+            table.insert(zonePoints, vector2(p.x, p.y))
+        end
+        clientPolyZones[area.name] = PolyZone:Create(zonePoints, {
+            name = area.name,
+            minZ = area.minZ,
+            maxZ = area.maxZ,
+            debugGrid = Config.Debugging,
+            debugPoly = Config.Debugging,
+        })
+        Debugging(string.format("Prospecting: Created PolyZone '%s'", area.name))
+    end
+end
+
+CreateThread(function()
+    Citizen.Wait(100)
+    SetupPolyZones()
+end)
 
 function EnsureAnimDict(dict)
     RequestAnimDict(dict)
@@ -41,7 +70,7 @@ end
 
 function EnsureModel(model)
     if not IsModelInCdimage(model) then
-        print(string.format("Prospecting: Model %s not found in CD image.", model))
+        Debugging(string.format("Prospecting: Model %s not found in CD image.", model))
         return false
     end
     if not HasModelLoaded(model) then
@@ -125,7 +154,7 @@ function DigSequence(cb)
 
     local ped = PlayerPedId()
     StopEntityAnim(ped, "wood_idle_a", "mini@golfai", 1)
-    
+
     if not ProspectingClientState.isPickingUp then
         ProspectingClientState.isPickingUp = true
         Citizen.Wait(100)
@@ -139,7 +168,7 @@ function DigSequence(cb)
             Wait(0)
         end
 
-        TaskPlayAnim(ped, animDictBurial, 'a_burial', 1.0, -1.0, -1, 48, 0, false, false, false)
+        TaskPlayAnim(ped, animDictBurial, 'a_burial', 1.0, -1.0, -1, 0, 0, false, false, false)
 
         QBCore.Functions.Progressbar("prospect_digging", "Digging...", math.random(3000, 9000), false, true, {
             disableMovement = true,
@@ -152,15 +181,19 @@ function DigSequence(cb)
                 cb()
             end
             CleanupModels()
+            Citizen.Wait(0)
             RemoveAnimDict('random@burial')
             AttachEntity(ped, "prop_metaldetector")
             ProspectingClientState.isPickingUp = false
+            ProspectingClientState.pauseProspecting = false
         end, function()
             ClearPedTasks(ped)
             CleanupModels()
+            Citizen.Wait(0)
             RemoveAnimDict('random@burial')
             AttachEntity(ped, "prop_metaldetector")
             ProspectingClientState.isPickingUp = false
+            ProspectingClientState.pauseProspecting = false
             QBCore.Functions.Notify("Digging cancelled.", "error")
         end)
     end
@@ -170,15 +203,14 @@ RegisterNetEvent("ts-prospecting:client:setTargetPool")
 AddEventHandler("ts-prospecting:client:setTargetPool", function(pool)
     targetPool = {}
     for n, data in ipairs(pool) do
-        table.insert(targetPool, {vector3(data.x, data.y, data.z), data.difficulty, n})
+        table.insert(targetPool, { vector3(data.x, data.y, data.z), data.difficulty, n, data.areaName, data.minZ, data.maxZ })
     end
 end)
 
 function GetClosestTarget(pos)
     local closest, index, closestdist, difficulty
     for n, target in next, targets do
-        local dist = #(pos.xy - target[1].xy)
-        if (not closest) or closestdist > dist then
+        local dist = #(pos.xy - target[1].xy) if (not closest) or closestdist > dist then
             closestdist = dist
             index = target[3]
             closest = target
@@ -190,7 +222,6 @@ end
 
 function DigTarget(index)
     ProspectingClientState.pauseProspecting = true
-    
     local localIndexToRemove = nil
     for i, target in ipairs(targets) do
         if target[3] == index then
@@ -209,7 +240,6 @@ function DigTarget(index)
     else
         QBCore.Functions.Notify("Error: Target to dig not found locally.", "error")
     end
-    
     ProspectingClientState.scannerState = SCANNER_STATE_NONE
 end
 
@@ -219,12 +249,23 @@ function StopProspecting()
         CleanupModels()
         local ped = PlayerPedId()
         StopEntityAnim(ped, "wood_idle_a", "mini@golfai", 1)
-        
+        ClearPedTasks(ped)
         ProspectingClientState.circleScale = 0.0
         ProspectingClientState.scannerScale = 0.0
         ProspectingClientState.scannerState = SCANNER_STATE_NONE
-        
         ProspectingClientState.isProspecting = false
+        EnableControlAction(0, 24, true)
+        EnableControlAction(0, 21, true)
+        EnableControlAction(0, 137, true)
+        EnableControlAction(0, 22, true)
+        EnableControlAction(0, 25, true)
+        EnableControlAction(0, 140, true)
+        EnableControlAction(0, 142, true)
+        EnableControlAction(0, 257, true)
+        EnableControlAction(0, 12, true)
+        EnableControlAction(0, 11, true)
+        EnableControlAction(0, 177, true)
+        EnableControlAction(0, 176, true)
         TriggerServerEvent("ts-prospecting:server:userStoppedProspecting")
     end
 end
@@ -257,9 +298,12 @@ CreateThread(function()
     TriggerServerEvent("ts-prospecting:server:userRequestsLocations")
 end)
 
+function IsPedMovementRestricted(ped, ply)
+    return IsPedFalling(ped) or IsPedJumping(ped) or IsPedSprinting(ped) or IsPedRunning(ped) or IsPlayerFreeAiming(ply) or IsPedRagdoll(ped) or IsPedInAnyVehicle(ped, false) or IsPedInCover(ped, false) or IsPedInMeleeCombat(ped) or IsPedOnAnyBike(ped) or IsPedOnFoot(ped) == false
+end
+
 function ProspectingThreads()
     if ProspectingClientState.isProspecting then return false end
-    
     TriggerServerEvent("ts-prospecting:server:userStartedProspecting")
     ProspectingClientState.isProspecting = true
     ProspectingClientState.didCancelProspecting = false
@@ -267,33 +311,31 @@ function ProspectingThreads()
 
     CreateThread(function()
         AttachEntity(PlayerPedId(), "prop_metaldetector")
-        
+
         while ProspectingClientState.isProspecting do
             Citizen.Wait(5)
 
             local ped = PlayerPedId()
             local ply = PlayerId()
-            local canProspect = true
+
+            DisableControlAction(0, 24, true)
+            DisableControlAction(0, 21, true)
+            DisableControlAction(0, 22, true)
+            DisableControlAction(0, 25, true)
+            DisableControlAction(0, 140, true)
+            DisableControlAction(0, 142, true)
+            DisableControlAction(0, 257, true)
+            DisableControlAction(0, 12, true)
+            DisableControlAction(0, 11, true)
+            DisableControlAction(0, 177, true)
+            DisableControlAction(0, 176, true)
 
             if not IsEntityPlayingAnim(ped, "mini@golfai", "wood_idle_a", 3) then
                 PlayAnimUpper(ped, "mini@golfai", "wood_idle_a")
             end
 
-            local restrictedMovement = false
-            restrictedMovement = restrictedMovement or IsPedFalling(ped)
-            restrictedMovement = restrictedMovement or IsPedJumping(ped)
-            restrictedMovement = restrictedMovement or IsPedSprinting(ped)
-            restrictedMovement = restrictedMovement or IsPedRunning(ped)
-            restrictedMovement = restrictedMovement or IsPlayerFreeAiming(ply)
-            restrictedMovement = restrictedMovement or IsPedRagdoll(ped)
-            restrictedMovement = restrictedMovement or IsPedInAnyVehicle(ped, false)
-            restrictedMovement = restrictedMovement or IsPedInCover(ped, false)
-            restrictedMovement = restrictedMovement or IsPedInMeleeCombat(ped)
-            restrictedMovement = restrictedMovement or IsPedOnAnyBike(ped)
-            restrictedMovement = restrictedMovement or IsPedOnFoot(ped) == false
+            local canProspect = not IsPedMovementRestricted(ped, ply)
 
-            if restrictedMovement then canProspect = false end
-            
             if canProspect and not ProspectingClientState.pauseProspecting then
                 local pedCoords = GetEntityCoords(ped)
                 local forwardVector = GetEntityForwardVector(ped)
@@ -414,7 +456,7 @@ function ProspectingThreads()
                     local alpha = math.floor(255 - ((ProspectingClientState.circleScale % 100) / 100) * 255)
                     local size = (ProspectingClientState.circleScale % 100) / 100 * 1.5
 
-                    DrawMarker(1, pos.x, pos.y, pos.z - 0.98, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 0.1, circleR, circleG, circleB, alpha, false, false, 2, false, 'nil', 'nil', false)
+                    DrawMarker(1, pos.x, pos.y, pos.z - 0.98, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 0.1, circleR, circleG, circleB, alpha, false, false, 2, false, false, false, false)
                 end
 
                 if ProspectingClientState.circleScale > 100 then
@@ -423,6 +465,19 @@ function ProspectingThreads()
                         PlaySoundFrontend(-1, "ATM_WINDOW", "HUD_FRONTEND_DEFAULT_SOUNDSET", false) 
                     end
                 end
+
+            if Config.Debugging then
+                for _, targetData in ipairs(targets) do
+                    local targetPos = targetData[1]
+                    local targetMinZ = targetData[5] or targetPos.z
+                    local targetMaxZ = targetData[6] or targetPos.z
+
+                    local pillarHeight = targetMaxZ - targetMinZ
+                    local pillarCenterZ = targetMinZ + (pillarHeight / 2)
+
+                    DrawMarker(1, targetPos.x, targetPos.y, pillarCenterZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, pillarHeight, 255, 0, 255, 100, false, false, 2, true, nil, nil, false)
+                end
+            end
 
                 frametime = frametime + GetFrameTime()
             end
@@ -440,20 +495,32 @@ function ProspectingThreads()
                 end
             end
             targets = newTargets
-            Citizen.Wait(5000)
+            Citizen.Wait(1000)
         end
     end)
     return true
 end
 
-local prospecting = false
-RegisterNetEvent("ts-prospecting:client:usedetector")
-AddEventHandler("ts-prospecting:client:usedetector", function()
-    if not prospecting then
-        TriggerServerEvent("ts-prospecting:server:activateProspecting")
-        prospecting = true
+RegisterNetEvent("ts-prospecting:client:checkPlayerInZone")
+AddEventHandler("ts-prospecting:client:checkPlayerInZone", function()
+    local playerPed = PlayerPedId()
+    local playerPos = GetEntityCoords(playerPed)
+    local inAnyZone = false
+
+    for _, zone in pairs(clientPolyZones) do
+        if zone:isPointInside(playerPos) then
+            inAnyZone = true
+            break
+        end
+    end
+
+    if inAnyZone then
+        if not ProspectingClientState.isProspecting then
+            TriggerServerEvent("ts-prospecting:server:activateProspecting")
+        elseif ProspectingClientState.isProspecting then
+            TriggerEvent("ts-prospecting:client:forceStop")
+        end
     else
-        TriggerEvent("ts-prospecting:client:forceStop")
-        prospecting = false
+        QBCore.Functions.Notify("You are not in a prospecting zone!", 'error')
     end
 end)
