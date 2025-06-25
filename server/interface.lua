@@ -10,6 +10,10 @@ function Prospecting.AddTarget(x, y, z, data)
     prospecting:AddProspectingTarget(x, y, z, data)
 end
 
+function Prospecting.GetProspectingTargets()
+    return prospecting:GetProspectingTargets()
+end
+
 function Prospecting.AddTargets(list)
     prospecting:AddProspectingTargets(list)
 end
@@ -193,6 +197,10 @@ end)
 
 function IsProspecting(player)
     return PROSPECTING_STATUS[player] ~= nil
+end
+
+function GetProspectingTargets()
+    return PROSPECTING_TARGETS
 end
 
 function SetDifficulty(modifier)
