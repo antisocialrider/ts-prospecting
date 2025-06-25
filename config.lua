@@ -1,6 +1,7 @@
 Config = Config or {}
 
 Config.Debugging = false
+Config.DebuggingTarget = false
 
 Config.prospecting_areas = {
     {

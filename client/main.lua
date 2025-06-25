@@ -25,6 +25,7 @@ local ProspectingClientState = {
     renderCircle = false,
     scannerDistance = 0.0,
     closestTargetDifficulty = 1.0,
+    closestTargetIndex = nil,
 }
 
 local previousAnim = nil
@@ -158,10 +159,6 @@ function DigSequence(cb)
     if not ProspectingClientState.isPickingUp then
         ProspectingClientState.isPickingUp = true
         Citizen.Wait(100)
-
-        AttachEntity(ped, "prop_tool_shovel")
-        AttachEntity(ped, "prop_ld_shovel_dirt")
-
         local animDictBurial = 'random@burial'
         RequestAnimDict(animDictBurial)
         while not HasAnimDictLoaded(animDictBurial) do
@@ -169,8 +166,9 @@ function DigSequence(cb)
         end
 
         TaskPlayAnim(ped, animDictBurial, 'a_burial', 1.0, -1.0, -1, 0, 0, false, false, false)
-
-        QBCore.Functions.Progressbar("prospect_digging", "Digging...", math.random(3000, 9000), false, true, {
+        AttachEntity(ped, "prop_tool_shovel")
+        AttachEntity(ped, "prop_ld_shovel_dirt")
+        QBCore.Functions.Progressbar("prospect_digging", "Digging...", math.random(6000, 12000), false, true, {
             disableMovement = true,
             disableCarMovement = true,
             disableMouse = false,
@@ -277,15 +275,10 @@ AddEventHandler("onResourceStop", function(resource)
     end
 end)
 
-function StartProspecting()
-    if not ProspectingClientState.isProspecting then
-        ProspectingThreads()
-    end
-end
-
 RegisterNetEvent("ts-prospecting:client:forceStart")
 AddEventHandler("ts-prospecting:client:forceStart", function()
-    StartProspecting()
+    if ProspectingClientState.isProspecting then return false end
+    ProspectingThreads()
 end)
 
 RegisterNetEvent("ts-prospecting:client:forceStop")
@@ -308,9 +301,15 @@ function ProspectingThreads()
     ProspectingClientState.isProspecting = true
     ProspectingClientState.didCancelProspecting = false
     ProspectingClientState.pauseProspecting = false
+    ProspectingClientState.scannerDistance = 0.0
+    ProspectingClientState.closestTargetDifficulty = 1.0
+    ProspectingClientState.closestTargetIndex = nil
 
     CreateThread(function()
         AttachEntity(PlayerPedId(), "prop_metaldetector")
+
+        local lastTargetCheck = 0
+        local checkInterval = 50
 
         while ProspectingClientState.isProspecting do
             Citizen.Wait(5)
@@ -339,17 +338,22 @@ function ProspectingThreads()
             if canProspect and not ProspectingClientState.pauseProspecting then
                 local pedCoords = GetEntityCoords(ped)
                 local forwardVector = GetEntityForwardVector(ped)
-                local pos = pedCoords + (forwardVector * 0.75) - vector3(0.0, 0.0, 0.75) 
+                local pos = pedCoords + (forwardVector * 0.75) - vector3(0.0, 0.0, 0.75)
 
-                local target, dist, index, targetDifficulty = GetClosestTarget(pos)
-                ProspectingClientState.closestTargetDifficulty = targetDifficulty or 1.0
+                if GetGameTimer() - lastTargetCheck > checkInterval then
+                    local target, dist, index, targetDifficulty = GetClosestTarget(pos)
+                    ProspectingClientState.closestTargetDifficulty = targetDifficulty or 1.0
+                    ProspectingClientState.scannerDistance = dist
+                    ProspectingClientState.closestTargetIndex = index
+                    lastTargetCheck = GetGameTimer()
+                end
 
-                if index then
-                    local effectiveDist = dist * ProspectingClientState.closestTargetDifficulty 
+                local effectiveDist = ProspectingClientState.scannerDistance * ProspectingClientState.closestTargetDifficulty
 
+                if ProspectingClientState.closestTargetIndex then
                     if effectiveDist < 3.0 then
                         if IsDisabledControlJustPressed(0, CONTROL_FRONTEND_RRIGHT) then
-                            DigTarget(index)
+                            DigTarget(ProspectingClientState.closestTargetIndex)
                         end
                         ProspectingClientState.scannerState = SCANNER_STATE_ULTRA
                     else
@@ -401,7 +405,6 @@ function ProspectingThreads()
                             ProspectingClientState.scannerState = SCANNER_STATE_NONE
                         end
                     end
-                    ProspectingClientState.scannerDistance = dist
                 else
                     ProspectingClientState.scannerState = SCANNER_STATE_NONE
                 end
@@ -423,15 +426,15 @@ function ProspectingThreads()
     CreateThread(function()
         local framecount = 0
         local frametime = 0.0
-        
+
         while ProspectingClientState.isProspecting do
-            Citizen.Wait(1)
+            Citizen.Wait(5)
 
             if not ProspectingClientState.pauseProspecting then
                 local ped = PlayerPedId()
                 local pedCoords = GetEntityCoords(ped)
                 local forwardVector = GetEntityForwardVector(ped)
-                local pos = pedCoords + (forwardVector * 0.75) - vector3(0.0, 0.0, 0.75) 
+                local pos = pedCoords + (forwardVector * 0.75) - vector3(0.0, 0.0, 0.75)
 
                 ProspectingClientState.renderCircle = true
 
@@ -456,30 +459,28 @@ function ProspectingThreads()
                     local alpha = math.floor(255 - ((ProspectingClientState.circleScale % 100) / 100) * 255)
                     local size = (ProspectingClientState.circleScale % 100) / 100 * 1.5
 
-                    DrawMarker(1, pos.x, pos.y, pos.z - 0.98, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 0.1, circleR, circleG, circleB, alpha, false, false, 2, false, false, false, false)
+                    DrawMarker(1, pos.x, pos.y, pos.z - 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 0.1, circleR, circleG, circleB, alpha, false, false, 2, false, false, false, false)
                 end
 
                 if ProspectingClientState.circleScale > 100 then
                     ProspectingClientState.circleScale = ProspectingClientState.circleScale % 100
-                    if ProspectingClientState.scannerState ~= SCANNER_STATE_ULTRA and ProspectingClientState.scannerAudio then 
-                        PlaySoundFrontend(-1, "ATM_WINDOW", "HUD_FRONTEND_DEFAULT_SOUNDSET", false) 
+                    if ProspectingClientState.scannerState ~= SCANNER_STATE_ULTRA and ProspectingClientState.scannerAudio then
+                        PlaySoundFrontend(-1, "ATM_WINDOW", "HUD_FRONTEND_DEFAULT_SOUNDSET", false)
                     end
                 end
-
-            if Config.Debugging then
-                for _, targetData in ipairs(targets) do
-                    local targetPos = targetData[1]
-                    local targetMinZ = targetData[5] or targetPos.z
-                    local targetMaxZ = targetData[6] or targetPos.z
-
-                    local pillarHeight = targetMaxZ - targetMinZ
-                    local pillarCenterZ = targetMinZ + (pillarHeight / 2)
-
-                    DrawMarker(1, targetPos.x, targetPos.y, pillarCenterZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, pillarHeight, 255, 0, 255, 100, false, false, 2, true, nil, nil, false)
-                end
-            end
-
                 frametime = frametime + GetFrameTime()
+                if Config.DebuggingTarget then
+                    for _, targetData in ipairs(targets) do
+                        local targetPos = targetData[1]
+                        local targetMinZ = targetData[5] or targetPos.z
+                        local targetMaxZ = targetData[6] or targetPos.z
+
+                        local pillarHeight = targetMaxZ - targetMinZ
+                        local pillarCenterZ = targetMinZ + (pillarHeight / 2)
+
+                        DrawMarker(1, targetPos.x, targetPos.y, pillarCenterZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, pillarHeight, 255, 0, 255, 100, false, false, 2, true, nil, nil, false)
+                    end
+                end
             end
         end
     end)
