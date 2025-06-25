@@ -21,6 +21,7 @@ client_scripts {
 data_file 'DLC_ITYP_REQUEST' 'stream/prop_metaldetector.ytyp'
 
 server_exports {
+    'GetProspectingTargets',
     'AddProspectingTarget',
     'AddProspectingTargets',
     'StartProspecting',
