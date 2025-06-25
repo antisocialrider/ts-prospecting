@@ -1,10 +1,4 @@
--- ===========================================================================
--- Client-Side Prospecting Logic (Metal Detector Scanner)
--- This script handles animations, scanner feedback, and user interaction
--- with prospecting targets.
--- ===========================================================================
-
--- Global state variables for prospecting
+local QBCore = exports['qb-core']:GetCoreObject()
 local isProspecting = false
 local pauseProspecting = false
 local didCancelProspecting = false
@@ -13,6 +7,7 @@ local scannerFrametime = 0.0
 local scannerScale = 0.0
 local scannerAudio = true -- Toggle for scanner audio feedback
 local isPickingUp = false -- Prevents multiple digging sequences
+local prospecting = false
 
 -- Local variables for scanner visual feedback (marker and audio)
 local circleScale = 0.0 -- Used for pulsating marker effect
@@ -97,7 +92,7 @@ end
 
 -- Offset data for attaching the metal detector model to the player's ped.
 local entityOffsets = {
-    ["w_am_metaldetector"] = { -- Assuming you're using this model, or specify another
+    ["prop_metaldetector"] = { -- Assuming you're using this model, or specify another
 		bone = 18905, -- Bone index for right hand / weapon attachment
         offset = vector3(0.15, 0.1, 0.0), -- Position offset relative to the bone
         rotation = vector3(270.0, 90.0, 80.0), -- Rotation offset
@@ -147,9 +142,28 @@ function DigSequence(cb)
         isPickingUp = true
         Citizen.Wait(100) -- Small wait for state update
 
-        -- Use scenario for digging animation
-        TaskStartScenarioInPlace(ped, 'world_human_gardener_plant', 0, false)
-        
+        local shovelModel = `prop_tool_shovel`
+        local dirtModel = `prop_ld_shovel_dirt`
+        local animDictBurial = 'random@burial'
+
+        EnsureModel(shovelModel)
+        EnsureModel(dirtModel)
+        RequestAnimDict(animDictBurial)
+
+        while not HasModelLoaded(shovelModel) or not HasModelLoaded(dirtModel) or not HasAnimDictLoaded(animDictBurial) do
+            Wait(0)
+        end
+
+        ShovelProp = CreateObject(shovelModel, GetEntityCoords(ped), true, false, false)
+        AttachEntityToEntity(ShovelProp, ped, GetPedBoneIndex(ped, 28422), 0.0, 0.0, 0.24, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
+        SetModelAsNoLongerNeeded(shovelModel)
+
+        DirtProp = CreateObject(dirtModel, GetEntityCoords(ped), true, false, false)
+        AttachEntityToEntity(DirtProp, ped, GetPedBoneIndex(ped, 28422), 0.0, 0.0, 0.24, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
+        SetModelAsNoLongerNeeded(dirtModel)
+
+        TaskPlayAnim(ped, animDictBurial, 'a_burial', 1.0, -1.0, -1, 48, 0, 0, 0, 0)
+
         -- QBCore Progressbar for digging duration
         QBCore.Functions.Progressbar("prospect_digging", "Digging...", math.random(3000, 9000), false, true, {
             disableMovement = true,
@@ -161,11 +175,38 @@ function DigSequence(cb)
             if cb then
                 cb() -- Execute the callback (e.g., collect item)
             end
-            AttachEntity(ped, "w_am_metaldetector") -- Re-attach scanner after digging
+            if ShovelProp and DoesEntityExist(ShovelProp) then
+                DeleteObject(ShovelProp)
+                clammingShovelProp = nil
+            end
+            if DirtProp and DoesEntityExist(DirtProp) then
+                DeleteObject(DirtProp)
+                DirtProp = nil
+            end
+            RemoveAnimDict('random@burial')
+
+
+
+
+            AttachEntity(ped, "prop_metaldetector") -- Re-attach scanner after digging
             isPickingUp = false
+
+
         end, function() -- Cancel callback
             ClearPedTasks(ped)
-            AttachEntity(ped, "w_am_metaldetector") -- Re-attach scanner on cancel
+            if ShovelProp and DoesEntityExist(ShovelProp) then
+                DeleteObject(ShovelProp)
+                clammingShovelProp = nil
+            end
+            if DirtProp and DoesEntityExist(DirtProp) then
+                DeleteObject(DirtProp)
+                DirtProp = nil
+            end
+            RemoveAnimDict('random@burial')
+
+
+
+            AttachEntity(ped, "prop_metaldetector") -- Re-attach scanner after digging
             isPickingUp = false
             QBCore.Functions.Notify("Digging cancelled.", "error")
         end)
@@ -319,7 +360,7 @@ function ProspectingThreads()
 
     -- Thread 1: Main Prospecting Logic (Animations, Target Detection, User Input)
     CreateThread(function()
-        AttachEntity(PlayerPedId(), "w_am_metaldetector") -- Attach the metal detector model
+        AttachEntity(PlayerPedId(), "prop_metaldetector") -- Attach the metal detector model
         
         while isProspecting do
             Citizen.Wait(0) -- Yield control frequently
@@ -522,3 +563,14 @@ function ProspectingThreads()
     end)
     return true
 end
+
+RegisterNetEvent("ts-prospecting:usedetector")
+AddEventHandler("ts-prospecting:usedetector", function()
+    if not prospecting then
+        TriggerServerEvent("ts-prospecting:activateProspecting")
+        prospecting = true
+    else
+        TriggerEvent("ts-prospecting:forceStop")
+        prospecting = false
+    end
+end)

@@ -11,12 +11,14 @@ shared_scripts {
 
 server_scripts {
     'server/interface.lua',        -- Interface for other resources to interact with prospecting
-    'server/sv_*.lua'       -- Includes sv_locations.lua and sv_prospecting.lua
+    'server/main.lua'       -- Includes sv_locations.lua and sv_prospecting.lua
 }
 
-client_scripts 'client/cl_*.lua' -- Includes cl_prospect.lua and cl_prospecting.lua
+client_scripts {
+    'client/main.lua'
+}
 
-file 'stream/gen_w_am_metaldetector.ytyp' -- YTYP file for the metal detector model
+data_file 'DLC_ITYP_REQUEST' 'stream/prop_metaldetector.ytyp'
 
 server_exports {
     'AddProspectingTarget',  -- x, y, z, data (data should now include item, valuable, and difficulty)
