@@ -1,20 +1,16 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
--- Control IDs
 local CONTROL_FRONTEND_RRIGHT = 54
 
--- Animation Flags
 local ANIM_FLAG_NORMAL = 0
 local ANIM_FLAG_UPPER_BODY = 49
 
--- Scanner States
 local SCANNER_STATE_NONE = "none"
 local SCANNER_STATE_SLOW = "slow"
 local SCANNER_STATE_MEDIUM = "medium"
 local SCANNER_STATE_FAST = "fast"
 local SCANNER_STATE_ULTRA = "ultra"
 
--- Prospecting State Management
 local ProspectingClientState = {
     isProspecting = false,
     pauseProspecting = false,
@@ -87,13 +83,13 @@ local entityOffsets = {
         rotation = vector3(270.0, 90.0, 80.0),
 	},
     ["prop_tool_shovel"] = {
-        bone = 28422, -- Used in your original DigSequence for shovel
-        offset = vector3(0.0, 0.0, 0.24), -- Adjust these as needed for desired positioning
-        rotation = vector3(0.0, 0.0, 0.0), -- Adjust these as needed
+        bone = 28422,
+        offset = vector3(0.0, 0.0, 0.24),
+        rotation = vector3(0.0, 0.0, 0.0),
     },
     ["prop_ld_shovel_dirt"] = {
-        bone = 28422, -- Attach to the same hand bone as the shovel, or adjust if another bone is better
-        offset = vector3(0.0, 0.0, 0.24), -- Will be hidden by anim, but useful for initial placement
+        bone = 28422,
+        offset = vector3(0.0, 0.0, 0.24),
         rotation = vector3(0.0, 0.0, 0.0),
     },
 }
@@ -125,7 +121,7 @@ function CleanupModels()
 end
 
 function DigSequence(cb)
-    CleanupModels() -- Ensure all previous props (like metal detector) are removed
+    CleanupModels()
 
     local ped = PlayerPedId()
     StopEntityAnim(ped, "wood_idle_a", "mini@golfai", 1)
@@ -134,11 +130,9 @@ function DigSequence(cb)
         ProspectingClientState.isPickingUp = true
         Citizen.Wait(100)
 
-        -- Instead of direct CreateObject, use AttachEntity
         AttachEntity(ped, "prop_tool_shovel")
         AttachEntity(ped, "prop_ld_shovel_dirt")
 
-        -- Ensure anim dict is loaded
         local animDictBurial = 'random@burial'
         RequestAnimDict(animDictBurial)
         while not HasAnimDictLoaded(animDictBurial) do
@@ -152,28 +146,28 @@ function DigSequence(cb)
             disableCarMovement = true,
             disableMouse = false,
             disableCombat = true,
-        }, {}, {}, {}, function() -- Done callback
+        }, {}, {}, {}, function()
             ClearPedTasks(ped)
             if cb then
                 cb()
             end
-            CleanupModels() -- Remove shovel and dirt props after digging
+            CleanupModels()
             RemoveAnimDict('random@burial')
-            AttachEntity(ped, "prop_metaldetector") -- Re-attach scanner
+            AttachEntity(ped, "prop_metaldetector")
             ProspectingClientState.isPickingUp = false
-        end, function() -- Cancel callback
+        end, function()
             ClearPedTasks(ped)
-            CleanupModels() -- Remove shovel and dirt props if cancelled
+            CleanupModels()
             RemoveAnimDict('random@burial')
-            AttachEntity(ped, "prop_metaldetector") -- Re-attach scanner
+            AttachEntity(ped, "prop_metaldetector")
             ProspectingClientState.isPickingUp = false
             QBCore.Functions.Notify("Digging cancelled.", "error")
         end)
     end
 end
 
-RegisterNetEvent("ts-prospecting:setTargetPool")
-AddEventHandler("ts-prospecting:setTargetPool", function(pool)
+RegisterNetEvent("ts-prospecting:client:setTargetPool")
+AddEventHandler("ts-prospecting:client:setTargetPool", function(pool)
     targetPool = {}
     for n, data in ipairs(pool) do
         table.insert(targetPool, {vector3(data.x, data.y, data.z), data.difficulty, n})
@@ -210,7 +204,7 @@ function DigTarget(index)
         local pos = target[1]
 
         DigSequence(function()
-            TriggerServerEvent("ts-prospecting:userCollectedNode", index, pos.x, pos.y, pos.z)
+            TriggerServerEvent("ts-prospecting:server:userCollectedNode", index, pos.x, pos.y, pos.z)
         end)
     else
         QBCore.Functions.Notify("Error: Target to dig not found locally.", "error")
@@ -231,7 +225,7 @@ function StopProspecting()
         ProspectingClientState.scannerState = SCANNER_STATE_NONE
         
         ProspectingClientState.isProspecting = false
-        TriggerServerEvent("ts-prospecting:userStoppedProspecting")
+        TriggerServerEvent("ts-prospecting:server:userStoppedProspecting")
     end
 end
 
@@ -248,25 +242,25 @@ function StartProspecting()
     end
 end
 
-RegisterNetEvent("ts-prospecting:forceStart")
-AddEventHandler("ts-prospecting:forceStart", function()
+RegisterNetEvent("ts-prospecting:client:forceStart")
+AddEventHandler("ts-prospecting:client:forceStart", function()
     StartProspecting()
 end)
 
-RegisterNetEvent("ts-prospecting:forceStop")
-AddEventHandler("ts-prospecting:forceStop", function()
+RegisterNetEvent("ts-prospecting:client:forceStop")
+AddEventHandler("ts-prospecting:client:forceStop", function()
     ProspectingClientState.isProspecting = false
 end)
 
 CreateThread(function()
     Citizen.Wait(1000)
-    TriggerServerEvent("ts-prospecting:userRequestsLocations")
+    TriggerServerEvent("ts-prospecting:server:userRequestsLocations")
 end)
 
 function ProspectingThreads()
     if ProspectingClientState.isProspecting then return false end
     
-    TriggerServerEvent("ts-prospecting:userStartedProspecting")
+    TriggerServerEvent("ts-prospecting:server:userStartedProspecting")
     ProspectingClientState.isProspecting = true
     ProspectingClientState.didCancelProspecting = false
     ProspectingClientState.pauseProspecting = false
@@ -452,13 +446,14 @@ function ProspectingThreads()
     return true
 end
 
-RegisterNetEvent("ts-prospecting:usedetector")
-AddEventHandler("ts-prospecting:usedetector", function()
+local prospecting = false
+RegisterNetEvent("ts-prospecting:client:usedetector")
+AddEventHandler("ts-prospecting:client:usedetector", function()
     if not prospecting then
-        TriggerServerEvent("ts-prospecting:activateProspecting")
+        TriggerServerEvent("ts-prospecting:server:activateProspecting")
         prospecting = true
     else
-        TriggerEvent("ts-prospecting:forceStop")
+        TriggerEvent("ts-prospecting:client:forceStop")
         prospecting = false
     end
 end)

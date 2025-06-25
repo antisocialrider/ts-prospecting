@@ -1,35 +1,31 @@
 Config = Config or {}
 
-Config.Debugging = true
+Config.Debugging = false
 
--- Defines all prospecting areas. Each area can have its own characteristics.
 Config.prospecting_areas = {
-    -- Area 1: General Prospecting Zone
     {
-        name = "General Prospecting Grounds", -- A descriptive name for the area
-        base = vector3(1580.9, 6592.204, 13.84828), -- Center point of the area
-        size = 50.0, -- Radius of the circular prospecting area
-        amount = 10, -- Amount of digging targets for zone
-        difficulty = 1.0, -- Default client-side scanner difficulty multiplier for this area (1.0 is normal)
-        item_pool = { -- Items that can randomly spawn in this area, with their rarity weight
+        name = "General Prospecting Grounds",
+        base = vector3(1580.9, 6592.204, 13.84828),
+        size = 50.0,
+        amount = 10,
+        difficulty = 1.0,
+        item_pool = {
             {item = "lockpick", valuable = false, weight = 50},
             {item = "advancedlockpick", valuable = false, weight = 30},
-            {item = "10kgoldchain", valuable = true, weight = 20}, -- More rare
+            {item = "10kgoldchain", valuable = true, weight = 20},
         }
     },
-    -- Area 2: High-Value Prospecting Zone
     {
-        name = "Rich Mineral Deposit", -- A descriptive name for the area
-        base = vector3(1400.0, 6700.0, 20.0), -- Another center point
-        size = 100.0, -- Smaller radius
-        amount = 10, -- Amount of digging targets for zone
-        difficulty = 1.5, -- This area is harder to detect in (scanner signals are more subtle)
-        item_pool = { -- Items that can randomly spawn in this area, with adjusted weights
+        name = "Rich Mineral Deposit",
+        base = vector3(1400.0, 6700.0, 20.0),
+        size = 100.0,
+        amount = 10,
+        difficulty = 1.5,
+        item_pool = {
             {item = "advancedlockpick", valuable = false, weight = 40},
             {item = "10kgoldchain", valuable = true, weight = 30},
             {item = "gold_nugget", valuable = true, weight = 25},
-            {item = "rare_diamond", valuable = true, weight = 5}, -- Very rare
+            {item = "rare_diamond", valuable = true, weight = 5},
         }
     },
-    -- Add more prospecting areas as needed
 }

@@ -2,16 +2,16 @@ fx_version 'cerulean'
 game 'gta5'
 name 'Prospecting System'
 author 'glitchdetector & tj_antisocial_rider'
-description 'A modern and flexible prospecting resource for QBCore with dynamic target generation in multiple areas.'
+description 'A modern and flexible prospecting resource for FiveM with dynamic target generation in multiple areas.'
 version '1.1.0'
 
 shared_scripts {
-    'config.lua' -- Configuration file, shared between client and server
+    'config.lua'
 }
 
 server_scripts {
-    'server/interface.lua',        -- Interface for other resources to interact with prospecting
-    'server/main.lua'       -- Includes sv_locations.lua and sv_prospecting.lua
+    'server/interface.lua',
+    'server/main.lua'
 }
 
 client_scripts {
@@ -21,10 +21,10 @@ client_scripts {
 data_file 'DLC_ITYP_REQUEST' 'stream/prop_metaldetector.ytyp'
 
 server_exports {
-    'AddProspectingTarget',  -- x, y, z, data (data should now include item, valuable, and difficulty)
-    'AddProspectingTargets', -- list (list of tables, each with x, y, z, and data)
-    'StartProspecting',      -- player
-    'StopProspecting',       -- player
-    'IsProspecting',         -- player
-    'SetDifficulty',         -- modifier (resource-specific difficulty for scanner)
+    'AddProspectingTarget',
+    'AddProspectingTargets',
+    'StartProspecting',
+    'StopProspecting',
+    'IsProspecting',
+    'SetDifficulty',
 }
